@@ -22,7 +22,7 @@ garminconnect==0.2.17
 # Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-cryptography==41.0.8
+cryptography>=41.0.0
 
 # Logging
 structlog==23.2.0

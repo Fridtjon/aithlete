@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 # Default values
 DB_HOST=${DATABASE_HOST:-localhost}
-DB_PORT=${DATABASE_PORT:-5432}
+DB_PORT=${POSTGRES_PORT:-5433}
 DB_NAME=${DATABASE_NAME:-aithlete}
 DB_USER=${DATABASE_USER:-aithlete_user}
 DB_PASSWORD=${DATABASE_PASSWORD:-aithlete_dev_password}

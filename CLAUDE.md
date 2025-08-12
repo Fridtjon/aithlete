@@ -42,6 +42,15 @@ docker-compose up -d
 ./scripts/test.sh
 ```
 
+### Container-First Development
+
+**IMPORTANT**: All development happens inside Docker containers. Never run services locally or create virtual environments on the host machine.
+
+- **Testing**: Use `docker-compose exec <service> <command>` to run tests inside containers
+- **Building**: Services build inside Docker containers using multi-stage builds
+- **Dependencies**: All dependencies managed within Docker images
+- **No Local Setup**: No need for local JDK, Python, or Node.js installations
+
 ### Service Development
 ```bash
 # Start individual service for development
