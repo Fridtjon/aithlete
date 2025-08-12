@@ -1,0 +1,307 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Create GitHub Release
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      release-id: ${{ steps.create-release.outputs.id }}
+      upload-url: ${{ steps.create-release.outputs.upload_url }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Generate changelog from conventional commits
+        if command -v git-chglog >/dev/null 2>&1; then
+          git-chglog --tag-filter-pattern 'v*' --output CHANGELOG.md
+          echo "changelog-file=CHANGELOG.md" >> $GITHUB_OUTPUT
+        else
+          # Fallback: simple git log
+          echo "## Changes" > CHANGELOG.md
+          git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md
+          echo "changelog-file=CHANGELOG.md" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create Release
+      id: create-release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: AIthlete ${{ github.ref_name }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # Build and push production images
+  build-production-images:
+    name: Build Production Images
+    runs-on: ubuntu-latest
+    needs: create-release
+    
+    strategy:
+      matrix:
+        service: 
+          - api-gateway
+          - user-service
+          - data-aggregation-service
+          - garmin-service
+          - hevy-service
+          - ai-planning-service
+          - email-service
+          - cli-interface
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest
+
+    - name: Build and push production image
+      uses: docker/build-push-action@v5
+      if: ${{ hashFiles(format('services/{0}/Dockerfile', matrix.service)) != '' }}
+      with:
+        context: ./services/${{ matrix.service }}
+        file: ./services/${{ matrix.service }}/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  # Build CLI distribution packages
+  build-cli-packages:
+    name: Build CLI Packages
+    runs-on: ubuntu-latest
+    needs: create-release
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build CLI distribution
+      run: |
+        if [ -d "services/cli-interface" ]; then
+          cd services/cli-interface
+          ./gradlew distZip distTar
+          
+          # Create OS-specific naming
+          OS_NAME="${{ matrix.os }}"
+          if [[ "$OS_NAME" == "ubuntu-latest" ]]; then
+            OS_NAME="linux"
+          elif [[ "$OS_NAME" == "macos-latest" ]]; then
+            OS_NAME="macos"
+          elif [[ "$OS_NAME" == "windows-latest" ]]; then
+            OS_NAME="windows"
+          fi
+          
+          # Rename distribution files
+          cd build/distributions
+          for file in aithlete-cli-*; do
+            mv "$file" "${file/aithlete-cli-/aithlete-cli-${OS_NAME}-}"
+          done
+        fi
+
+    - name: Upload CLI distribution
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload-url }}
+        asset_path: services/cli-interface/build/distributions/aithlete-cli-${{ matrix.os }}-${{ github.ref_name }}.zip
+        asset_name: aithlete-cli-${{ matrix.os }}-${{ github.ref_name }}.zip
+        asset_content_type: application/zip
+
+  # Create production deployment configuration
+  create-deployment-config:
+    name: Create Deployment Config
+    runs-on: ubuntu-latest
+    needs: [create-release, build-production-images]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Generate production docker-compose
+      run: |
+        # Create production docker-compose with release tags
+        sed "s/:latest/:${{ github.ref_name }}/g" docker-compose.yml > docker-compose.prod.yml
+        
+        # Remove development-specific configurations
+        # Remove volume mounts for source code
+        # Set production environment variables
+        # Add restart policies
+        
+        cat << 'EOF' >> docker-compose.prod.yml
+        
+        # Production overrides
+        version: '3.8'
+        services:
+          postgres:
+            restart: unless-stopped
+            environment:
+              POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+          
+          redis:
+            restart: unless-stopped
+          
+          api-gateway:
+            restart: unless-stopped
+            environment:
+              SPRING_PROFILES_ACTIVE: prod
+              JWT_SECRET: ${JWT_SECRET}
+            volumes: []
+          
+          user-service:
+            restart: unless-stopped
+            environment:
+              SPRING_PROFILES_ACTIVE: prod
+            volumes: []
+          
+          data-aggregation-service:
+            restart: unless-stopped
+            environment:
+              SPRING_PROFILES_ACTIVE: prod
+            volumes: []
+          
+          garmin-service:
+            restart: unless-stopped
+            environment:
+              FLASK_ENV: production
+            volumes: []
+          
+          hevy-service:
+            restart: unless-stopped
+            environment:
+              ENVIRONMENT: production
+            volumes: []
+          
+          ai-planning-service:
+            restart: unless-stopped
+            environment:
+              ENVIRONMENT: production
+              OPENAI_API_KEY: ${OPENAI_API_KEY}
+            volumes: []
+          
+          email-service:
+            restart: unless-stopped
+            environment:
+              SPRING_PROFILES_ACTIVE: prod
+              SMTP_HOST: ${SMTP_HOST}
+              SMTP_USERNAME: ${SMTP_USERNAME}
+              SMTP_PASSWORD: ${SMTP_PASSWORD}
+            volumes: []
+        EOF
+
+    - name: Upload deployment config
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload-url }}
+        asset_path: docker-compose.prod.yml
+        asset_name: docker-compose.prod.yml
+        asset_content_type: text/plain
+
+    - name: Create deployment script
+      run: |
+        cat << 'EOF' > deploy.sh
+        #!/bin/bash
+        set -e
+        
+        echo "AIthlete ${{ github.ref_name }} Deployment Script"
+        echo "================================================"
+        
+        # Check prerequisites
+        command -v docker >/dev/null 2>&1 || { echo "Docker is required but not installed. Aborting." >&2; exit 1; }
+        command -v docker-compose >/dev/null 2>&1 || { echo "Docker Compose is required but not installed. Aborting." >&2; exit 1; }
+        
+        # Check environment file
+        if [ ! -f ".env" ]; then
+          echo "Creating .env from .env.example..."
+          cp .env.example .env
+          echo "Please edit .env with your production settings before continuing."
+          exit 1
+        fi
+        
+        # Pull latest images
+        echo "Pulling Docker images..."
+        docker-compose -f docker-compose.prod.yml pull
+        
+        # Start services
+        echo "Starting services..."
+        docker-compose -f docker-compose.prod.yml up -d
+        
+        # Wait for services to be ready
+        echo "Waiting for services to be ready..."
+        sleep 30
+        
+        # Health checks
+        echo "Running health checks..."
+        docker-compose -f docker-compose.prod.yml exec -T postgres pg_isready -U aithlete_user -d aithlete
+        docker-compose -f docker-compose.prod.yml exec -T redis redis-cli ping
+        
+        # Test API Gateway
+        if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+          echo "✅ API Gateway is healthy"
+        else
+          echo "❌ API Gateway health check failed"
+        fi
+        
+        echo "Deployment complete!"
+        echo "Access your AIthlete instance at http://localhost:8080"
+        EOF
+        
+        chmod +x deploy.sh
+
+    - name: Upload deployment script
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload-url }}
+        asset_path: deploy.sh
+        asset_name: deploy.sh
+        asset_content_type: application/x-sh

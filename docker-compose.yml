@@ -1,0 +1,318 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: aithlete-postgres
+    environment:
+      POSTGRES_DB: aithlete
+      POSTGRES_USER: aithlete_user
+      POSTGRES_PASSWORD: aithlete_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aithlete_user -d aithlete"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aithlete-network
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: aithlete-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # API Gateway Service (Kotlin/Spring Boot)
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/aithlete
+      - DATABASE_USER=aithlete_user
+      - DATABASE_PASSWORD=aithlete_dev_password
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_jwt_secret_change_in_production
+    volumes:
+      - ./services/api-gateway:/app
+      - gradle_cache:/home/gradle/.gradle
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # User Management Service (Kotlin/Spring Boot)
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-user-service
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/aithlete
+      - DATABASE_USER=aithlete_user
+      - DATABASE_PASSWORD=aithlete_dev_password
+      - REDIS_URL=redis://redis:6379
+      - API_GATEWAY_URL=http://api-gateway:8080
+    volumes:
+      - ./services/user-service:/app
+      - gradle_cache:/home/gradle/.gradle
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # Data Aggregation Service (Kotlin/Spring Boot)
+  data-aggregation-service:
+    build:
+      context: ./services/data-aggregation-service
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-data-aggregation
+    ports:
+      - "8082:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/aithlete
+      - DATABASE_USER=aithlete_user
+      - DATABASE_PASSWORD=aithlete_dev_password
+      - REDIS_URL=redis://redis:6379
+      - GARMIN_SERVICE_URL=http://garmin-service:8000
+      - HEVY_SERVICE_URL=http://hevy-service:8000
+    volumes:
+      - ./services/data-aggregation-service:/app
+      - gradle_cache:/home/gradle/.gradle
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # Garmin Data Service (Python/Flask)
+  garmin-service:
+    build:
+      context: ./services/garmin-service
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-garmin-service
+    ports:
+      - "8003:8000"
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://aithlete_user:aithlete_dev_password@postgres:5432/aithlete
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./services/garmin-service:/app
+      - python_cache:/root/.cache/pip
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # Hevy Data Service (Python/FastAPI)
+  hevy-service:
+    build:
+      context: ./services/hevy-service
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-hevy-service
+    ports:
+      - "8004:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://aithlete_user:aithlete_dev_password@postgres:5432/aithlete
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./services/hevy-service:/app
+      - python_cache:/root/.cache/pip
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # AI Planning Service (Python/FastAPI)
+  ai-planning-service:
+    build:
+      context: ./services/ai-planning-service
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-ai-planning
+    ports:
+      - "8005:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://aithlete_user:aithlete_dev_password@postgres:5432/aithlete
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATA_AGGREGATION_SERVICE_URL=http://data-aggregation-service:8080
+      - USER_SERVICE_URL=http://user-service:8080
+    volumes:
+      - ./services/ai-planning-service:/app
+      - python_cache:/root/.cache/pip
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # Email Service (Kotlin/Spring Boot)
+  email-service:
+    build:
+      context: ./services/email-service
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-email-service
+    ports:
+      - "8086:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/aithlete
+      - DATABASE_USER=aithlete_user
+      - DATABASE_PASSWORD=aithlete_dev_password
+      - REDIS_URL=redis://redis:6379
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+    volumes:
+      - ./services/email-service:/app
+      - gradle_cache:/home/gradle/.gradle
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - aithlete-network
+
+  # CLI Interface (Kotlin/Spring Boot)
+  cli-interface:
+    build:
+      context: ./services/cli-interface
+      dockerfile: Dockerfile.dev
+    container_name: aithlete-cli
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - API_GATEWAY_URL=http://api-gateway:8080
+    volumes:
+      - ./services/cli-interface:/app
+      - gradle_cache:/home/gradle/.gradle
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - aithlete-network
+    profiles:
+      - cli # Only start when explicitly requested
+
+  # Development tools
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: aithlete-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@aithlete.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - aithlete-network
+    profiles:
+      - tools # Only start when explicitly requested
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: aithlete-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8085:8081"
+    depends_on:
+      - redis
+    networks:
+      - aithlete-network
+    profiles:
+      - tools # Only start when explicitly requested
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+  gradle_cache:
+  python_cache:
+
+networks:
+  aithlete-network:
+    driver: bridge

@@ -1,0 +1,85 @@
+spring:
+  application:
+    name: api-gateway
+  
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/aithlete}
+    username: ${DATABASE_USER:aithlete_user}
+    password: ${DATABASE_PASSWORD:aithlete_dev_password}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+  
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+  
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000 # 10 minutes
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:default_jwt_secret_change_in_production}
+    expiration: 86400 # 24 hours in seconds
+
+services:
+  user-service:
+    url: ${USER_SERVICE_URL:http://localhost:8081}
+  data-aggregation-service:
+    url: ${DATA_AGGREGATION_SERVICE_URL:http://localhost:8082}
+  garmin-service:
+    url: ${GARMIN_SERVICE_URL:http://localhost:8003}
+  hevy-service:
+    url: ${HEVY_SERVICE_URL:http://localhost:8004}
+  ai-planning-service:
+    url: ${AI_PLANNING_SERVICE_URL:http://localhost:8005}
+  email-service:
+    url: ${EMAIL_SERVICE_URL:http://localhost:8086}
+
+logging:
+  level:
+    com.aithlete: DEBUG
+    org.springframework.security: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  
+  jpa:
+    show-sql: false
+  
+logging:
+  level:
+    com.aithlete: INFO
+    org.springframework.security: WARN
+    root: WARN
