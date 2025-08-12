@@ -46,11 +46,49 @@ Note: This project is for personal use. Respect platform Terms of Service and pr
 - Multi-user SaaS features.
 - Locking into a single vendor or architecture.
 
-## Roadmap (subject to change)
-1. Minimal Garmin + Hevy tools and a CLI to pull + print a plan. 
-2. Daily/weekly email digests.
-3. Optional MCP layer so the AI can call tools directly. 
-4. Plug-in pattern for new data sources or actions (e.g., calendar, nutrition, reminders).
+## Technical Architecture
+
+AIthlete is built as a microservices system with 8 core services:
+
+### Service Architecture
+- **Technology Stack**: Kotlin/Spring Boot (business logic), Python (data integrations)
+- **Database**: PostgreSQL for all persistent data
+- **Communication**: RESTful APIs between services
+- **Deployment**: Docker containers with Docker Compose orchestration
+
+### Core Services
+1. **Garmin Data Service** (Python) - Fetches health/fitness data via python-garminconnect
+2. **Hevy Data Service** (Python) - Integrates with Hevy Pro API for workout data  
+3. **Data Aggregation Service** (Kotlin) - Normalizes data from all sources
+4. **User Management Service** (Kotlin) - Manages user goals, plans, and preferences
+5. **AI Planning Service** (Python) - Generates personalized recommendations using LLMs
+6. **CLI Interface** (Kotlin) - Primary user interaction point
+7. **Email Service** (Kotlin) - Automated digest delivery system
+8. **API Gateway** (Kotlin) - Service orchestration and routing
+
+### Development Approach
+The project is organized into **9 measurable epics** spanning 12-16 weeks:
+- Foundation Infrastructure → Data Integration → AI Planning → User Interface → Production Deployment
+
+Detailed documentation available in `docs/` folder.
+
+## Roadmap
+
+### Phase 1: Foundation (Weeks 1-3)
+- PostgreSQL schema design and Docker environment setup
+- Service templates and CI/CD pipeline
+
+### Phase 2: Data Integration (Weeks 4-6)  
+- Garmin and Hevy data services with normalization
+- User goal and plan management system
+
+### Phase 3: Intelligence Layer (Weeks 7-10)
+- AI planning engine with LLM integration
+- Command-line interface for user interactions
+
+### Phase 4: Delivery & Operations (Weeks 11-16)
+- Email digest system and service orchestration
+- Production deployment and monitoring
 
 ## Conventional Commits & Versioning
 
