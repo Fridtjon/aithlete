@@ -11,6 +11,51 @@ AIthlete is a personal fitness assistant that combines your own data (e.g., Garm
 
 Note: This project is for personal use. Respect platform Terms of Service and privacy expectations when using any third-party tools.
 
+## Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- Git
+
+### Get Started in 3 Commands
+```bash
+# 1. Clone and setup environment
+git clone <repository-url>
+cd aithlete
+cp .env.example .env
+
+# 2. Start all services
+docker-compose up -d
+
+# 3. Initialize database
+./scripts/migrate.sh
+```
+
+**That's it!** The application is now running:
+- API Gateway: http://localhost:8080
+- Database Admin: http://localhost:5050 (admin@aithlete.dev / admin)
+- All 8 microservices are running and healthy
+
+### Development Commands
+```bash
+# Build all services
+./scripts/build.sh
+
+# Run all tests
+./scripts/test.sh
+
+# View logs
+docker-compose logs -f [service-name]
+
+# Stop services
+docker-compose down
+```
+
+### Next Steps
+1. Configure your API keys in `.env` (Garmin, Hevy, OpenAI)
+2. See `docs/` folder for detailed documentation
+3. Check `CLAUDE.md` for development guidelines
+
 ## Goals
 - Simple to run: one command to start; sensible defaults.
 - Simple to understand: small, well-named modules with clear contracts.
