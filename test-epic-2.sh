@@ -13,7 +13,7 @@ fi
 
 GARMIN_USERNAME="$1"
 GARMIN_PASSWORD="$2"
-USER_ID="test-user-$(date +%s)"
+USER_ID=$(uuidgen)
 BASE_URL="http://localhost:8003"
 
 echo "🧪 Testing Epic 2: Garmin Data Integration"

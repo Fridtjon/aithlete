@@ -84,7 +84,7 @@ class CredentialService:
     ) -> bool:
         """Store encrypted Garmin credentials for a user"""
         try:
-            from app.models.garmin import UserCredential
+            from app.models.user import UserCredential
             
             # Encrypt credentials
             encrypted_username = self.encrypt_credential(username)
@@ -151,7 +151,7 @@ class CredentialService:
     ) -> Optional[Dict[str, str]]:
         """Retrieve and decrypt Garmin credentials for a user"""
         try:
-            from app.models.garmin import UserCredential
+            from app.models.user import UserCredential
             
             result = await db.execute(
                 select(UserCredential).where(
@@ -195,7 +195,7 @@ class CredentialService:
     ) -> bool:
         """Delete Garmin credentials for a user"""
         try:
-            from app.models.garmin import UserCredential
+            from app.models.user import UserCredential
             
             # Mark credentials as inactive instead of deleting for audit trail
             result = await db.execute(
